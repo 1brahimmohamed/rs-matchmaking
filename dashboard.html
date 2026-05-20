@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rust Server Live Telemetry</title>
+    <style>
+        body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h1 { color: #58a6ff; }
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel { background: #161b22; padding: 20px; border-radius: 8px; border: 1px solid #30363d; }
+        .metric { font-size: 3rem; color: #3fb950; font-weight: bold; margin: 10px 0; }
+        
+        /* The visual queue bar */
+        .queue-bar-container { width: 100%; height: 30px; background: #21262d; border-radius: 4px; overflow: hidden; margin-top: 20px; }
+        .queue-bar { height: 100%; background: #f85149; width: 0%; transition: width 0.1s linear; }
+        
+        .match-log { margin-top: 10px; font-size: 0.9rem; }
+        .match-item { padding: 5px; border-bottom: 1px solid #30363d; }
+        .warning { color: #f85149; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Rust Matchmaker: Live Telemetry</h1>
+    <div class="dashboard">
+        <div class="panel">
+            <h2>Live Queue State</h2>
+            <p>Players currently holding the Mutex lock:</p>
+            <div class="metric" id="queue-count">0</div>
+            <div id="queue-status">Status: Healthy</div>
+            
+            <div class="queue-bar-container">
+                <div class="queue-bar" id="queue-bar"></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Recent Matches</h2>
+            <div class="match-log" id="match-log">Waiting for server data...</div>
+        </div>
+    </div>
+
+    <script>
+        const RUST_SERVER_URL = "http://localhost:3000/state";
+        
+        // Fetch the live state every 100 milliseconds
+        setInterval(async () => {
+            try {
+                const response = await fetch(RUST_SERVER_URL);
+                const data = await response.json();
+                
+                // Update Queue Count
+                document.getElementById('queue-count').innerText = data.queue_length;
+                
+                // Update Queue Bar (assuming 5000 is a "full" congested queue for visualization)
+                const fillPercentage = Math.min((data.queue_length / 5000) * 100, 100);
+                document.getElementById('queue-bar').style.width = `${fillPercentage}%`;
+
+                // Update Status Text
+                const statusEl = document.getElementById('queue-status');
+                if (data.queue_length > 2000) {
+                    statusEl.innerHTML = '<span class="warning">⚠️ CRITICAL: Mutex Contention Detected!</span>';
+                } else {
+                    statusEl.innerText = 'Status: Healthy';
+                }
+
+                // Update Matches
+                const matchLog = document.getElementById('match-log');
+                if (data.recent_matches.length === 0) {
+                    matchLog.innerHTML = "No matches formed yet...";
+                } else {
+                    matchLog.innerHTML = data.recent_matches.reverse().map(m => 
+                        `<div class="match-item">
+                            🗡️ Match: <b>${m.player_1.id}</b> (${m.player_1.mmr}) vs <b>${m.player_2.id}</b> (${m.player_2.mmr})
+                        </div>`
+                    ).join('');
+                }
+            } catch (err) {
+                document.getElementById('queue-count').innerText = "OFFLINE";
+                document.getElementById('match-log').innerText = "Cannot connect to Rust server. Is it running?";
+            }
+        }, 100); 
+    </script>
+</body>
+</html>
